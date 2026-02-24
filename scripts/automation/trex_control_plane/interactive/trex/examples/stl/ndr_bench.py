@@ -707,8 +707,8 @@ class NdrBench:
                                   duration=duration, core_mask=self.config.transmit_core_masks,
                                   ramp_up_time=self.config.ramp_up_time)
         time.sleep(duration / 2)
-        stats = self.stl_client.get_stats()
         self.stl_client.stop(ports=self.config.ports)
+        stats = self.stl_client.get_stats()
         opackets = stats['total']['opackets']
         ipackets = stats['total']['ipackets']
         lost_p = opackets - ipackets
