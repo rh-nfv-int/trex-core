@@ -2642,7 +2642,7 @@ def build_prog (bld, build_obj):
 
     if bld.env.DPDK_WITH_ARCHIVE == True:
         DPDK_FLAGS.extend(['-DRTE_HAS_LIBARCHIVE'])
-        linkflags += ['-larchive']
+        lib_ext.append('archive')
 
     if march == 'x86_64':
         bp_dpdk = SrcGroups([
