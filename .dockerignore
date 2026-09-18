@@ -1,0 +1,20 @@
+# Keep the build context small and reproducible.
+.git
+.gitignore
+.gitreview
+*.patch
+*.orig
+*.rej
+new/
+client/
+signedoff/
+travis_files/
+.travis.yml
+# Any pre-existing local build output (rebuilt inside the image).
+linux_dpdk/build_dpdk/
+linux/build/
+# Files not needed by the source build (avoids busting the compile cache).
+Dockerfile
+.dockerignore
+.github/
+docker/README.md
