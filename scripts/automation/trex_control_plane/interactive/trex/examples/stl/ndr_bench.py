@@ -388,10 +388,26 @@ class NdrBenchResults:
         if 'iteration' in self.stats:
             print("Total Iterations                  :{}".format(self.stats['total_iterations']))
         print("Max Rate                          :%s       " % self.convert_rate(float(self.stats['max_rate_bps'])))
+        print("Max Rate [bps]                    :%s" % self.convert_rate(float(self.stats['max_rate_bps'])))
+        if 'max_rate_pps' in self.stats:
+            print("Max Rate [pps]                    :%s" % self.convert_rate(float(self.stats['max_rate_pps']), True))
         print("Optimal P-Drop Rate               :%s" % self.convert_rate(float(self.stats['rate_tx_bps'])))
         print("P-Drop Rate (%% of max)            :%0.2f %%" % self.stats['rate_p'])
         print("Drop Rate at Optimal P-Drop Rate  :%0.5f %% of oPackets" % self.stats['drop_rate_percentage'])
         print("Queue Full at Optimal P-Drop Rate :%0.2f %% of oPackets" % self.stats['queue_full_percentage'])
+        if 'interval_low_percentage' in self.stats:
+            print("Final Interval (%% of max)         :[%0.2f %%, %0.2f %%]" %
+                  (self.stats['interval_low_percentage'], self.stats['interval_high_percentage']))
+            print("Final Interval (absolute)         :[%s, %s]" %
+                  (self.convert_rate(float(self.stats['interval_low_bps'])),
+                   self.convert_rate(float(self.stats['interval_high_bps']))))
+        if self.stats.get('ndr_precision_percentage') is not None:
+            width_bps = float(self.stats['interval_high_bps']) - float(self.stats['interval_low_bps'])
+            width_pps = ((self.stats['interval_high_percentage'] - self.stats['interval_low_percentage']) / 100.00) \
+                        * float(self.stats.get('max_rate_pps', 0))
+            print("NDR Precision (relative)          :+%0.2f %% (+%s, +%s)" %
+                  (self.stats['ndr_precision_percentage'], self.convert_rate(width_bps),
+                   self.convert_rate(width_pps, True)))
         if self.config.latency and self.config.max_latency_set:
             print("Valid Latency at Opt. P-Drop Rate :%s" % self.stats['valid_latency'])
         self.print_run_stats()
@@ -430,9 +446,18 @@ class NdrBenchResults:
                    'OPT RX Rate [bps]': self.convert_rate(float(self.stats['rate_rx_bps'])),
                    'OPT Rate (Multiplier) [%]': str(self.stats['rate_p']),
                    'Max Rate [bps]': self.convert_rate(float(self.stats['max_rate_bps'])),
+                   'Max Rate [pps]': self.convert_rate(float(self.stats['max_rate_pps']), True) if 'max_rate_pps' in self.stats else None,
                    'Drop Rate [%]': str(round(self.stats['drop_rate_percentage'], 2)),
                    'Elapsed Time [Sec]': str(round(self.stats['Elapsed Time'], 2)),
                    'NDR points': [self.convert_rate(float(x)) for x in self.stats['ndr_points']],
+                   'Final Interval [%]': "[" + str(round(self.stats['interval_low_percentage'], 2)) + "%, " +
+                                         str(round(self.stats['interval_high_percentage'], 2)) + "%]"
+                                         if 'interval_low_percentage' in self.stats else None,
+                   'Final Interval [bps]': "[" + self.convert_rate(float(self.stats['interval_low_bps'])) + ", " +
+                                           self.convert_rate(float(self.stats['interval_high_bps'])) + "]"
+                                           if 'interval_low_bps' in self.stats else None,
+                   'NDR Precision (relative) [%]': "+" + str(round(self.stats['ndr_precision_percentage'], 2)) + "%"
+                                                   if self.stats.get('ndr_precision_percentage') is not None else None,
                    'Total Iterations': self.stats.get('iteration', None),
                    'Title': self.stats['title'],
                    'latency': dict(self.stats['latency']),
@@ -757,6 +782,7 @@ class NdrBench:
             self.results.print_state("Calculation of max rate for DUT", None, None)
         run_results = self.perf_run(100, True)
         run_results['max_rate_bps'] = run_results['rate_tx_bps']
+        run_results['max_rate_pps'] = run_results['tx_pps']
         self.results.update(run_results)
         if self.results.stats['drop_rate_percentage'] < 0:
             self.results.stats['drop_rate_percentage'] = 0
@@ -841,6 +867,13 @@ class NdrBench:
         self.opt_run_stats['iteration'] = current_run_stats['iteration']
         self.opt_run_stats['total_iterations'] = current_run_stats['total_iterations']
         self.opt_run_stats['rate_difference'] = 0
+        self.opt_run_stats['interval_low_percentage'] = low_bound
+        self.opt_run_stats['interval_high_percentage'] = high_bound
+        low_bps = max_rate.convert_percent_to_rate(low_bound)
+        high_bps = max_rate.convert_percent_to_rate(high_bound)
+        self.opt_run_stats['interval_low_bps'] = low_bps
+        self.opt_run_stats['interval_high_bps'] = high_bps
+        self.opt_run_stats['ndr_precision_percentage'] = ((high_bps - low_bps) / low_bps * 100.00) if low_bps > 0 else None
         return self.opt_run_stats
 
     def find_ndr(self):
@@ -902,6 +935,10 @@ class NdrBench:
         else:
             if self.config.verbose:
                 self.results.print_state("NDR found at max rate", None, None)
+            max_rate_bps = self.results.stats['max_rate_bps']
+            self.results.update({'interval_low_percentage': 100.0, 'interval_high_percentage': 100.0,
+                                 'interval_low_bps': max_rate_bps, 'interval_high_bps': max_rate_bps,
+                                 'ndr_precision_percentage': 0.0})
 
         self.calculate_ndr_points()
 
