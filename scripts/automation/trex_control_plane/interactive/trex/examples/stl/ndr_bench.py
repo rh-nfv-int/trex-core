@@ -144,10 +144,9 @@ class NdrBenchConfig:
         """
 
         self.bi_dir = bi_dir
-        # The sleep call divides the duration by 2
-        self.iteration_duration = (iteration_duration * 2)
+        self.iteration_duration = iteration_duration
         self.q_full_resolution = q_full_resolution
-        self.first_run_duration = (first_run_duration * 2)
+        self.first_run_duration = first_run_duration
         self.pdr = pdr  # desired percent of drop-rate. pdr = 0 is NO drop-rate
         self.pdr_error = pdr_error
         self.ndr_results = ndr_results
@@ -718,27 +717,32 @@ class NdrBench:
         """
         self.stl_client.stop(ports=self.config.ports)
         self.stl_client.clear_stats()
-        duration = 0
         if run_max:
             duration = self.config.first_run_duration
-            self.stl_client.start(ports=self.config.transmit_ports, mult="100%",
-                                  duration=duration, core_mask=self.config.transmit_core_masks,
-                                  ramp_up_time=self.config.ramp_up_time)
+            mult = "100%"
             rate_mb_percent = 100
         else:
             m_rate = Rate(self.results.stats['max_rate_bps'])
             if rate_mb_percent == 0:
                 rate_mb_percent += 1
-            run_rate = m_rate.convert_percent_to_rate(rate_mb_percent)
+            mult = str(m_rate.convert_percent_to_rate(rate_mb_percent)) + "bps"
             duration = self.config.iteration_duration
-            self.stl_client.start(ports=self.config.transmit_ports, mult=str(run_rate) + "bps",
-                                  duration=duration, core_mask=self.config.transmit_core_masks,
-                                  ramp_up_time=self.config.ramp_up_time)
-        time.sleep(duration / 2)
-        # Read rate/utilization counters while traffic is still running: they are
-        # instantaneous and decay to zero once traffic is stopped.
+        # Let the server time the run and notify us over its async event channel
+        # when the job is done. The duration counts from the start of the
+        # ramp-up, so add the ramp time to hold at the target rate for the full
+        # requested duration.
+        self.stl_client.start(ports=self.config.transmit_ports, mult=mult,
+                              duration=duration + self.config.ramp_up_time,
+                              core_mask=self.config.transmit_core_masks,
+                              ramp_up_time=self.config.ramp_up_time)
+        # Sample the instantaneous rate/utilization counters while traffic is
+        # still running: they decay to zero once it stops. is_traffic_active
+        # follows the server's job-done event, so the loop ends when the timed
+        # run completes.
         stats = self.stl_client.get_stats()
-        self.stl_client.stop(ports=self.config.ports)
+        while self.stl_client.is_traffic_active(ports=self.config.ports):
+            stats = self.stl_client.get_stats()
+            time.sleep(0.5)
         # Let in-flight packets drain before reading the final packet counts, so
         # packets still on the wire are not miscounted as drops.
         if self.config.rx_delay_ms:
