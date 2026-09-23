@@ -30,7 +30,16 @@ class PortStats(AbstractStats):
         tx_pps  = snapshot.get("m_total_tx_pps")
         rx_bps  = snapshot.get("m_total_rx_bps")
         rx_pps  = snapshot.get("m_total_rx_pps")
-        ts_diff = 0.5 # TODO: change this to real ts diff from server
+        # Real time delta between this snapshot and the previous one, measured
+        # by the server's monotonic clock, so rates are not skewed by client
+        # scheduling or clock differences. Fall back to the poll interval on the
+        # first update, when there is no previous timestamp yet.
+        prev_ts = self.latest_stats.get('ts')
+        cur_ts = snapshot.get('ts')
+        if prev_ts is not None and cur_ts is not None and cur_ts > prev_ts:
+            ts_diff = cur_ts - prev_ts
+        else:
+            ts_diff = 0.5
 
         bps_tx_L1 = calc_bps_L1(tx_bps, tx_pps)
         bps_rx_L1 = calc_bps_L1(rx_bps, rx_pps)
@@ -72,6 +81,9 @@ class PortStats(AbstractStats):
     def to_dict (self):
         stats = {}
 
+        # Absolute server timestamp of this snapshot (not relative): the client
+        # differences it between two snapshots to compute exact rates.
+        stats['ts']       = self.get("ts")
         stats['opackets'] = self.get_rel("opackets")
         stats['ipackets'] = self.get_rel("ipackets")
         stats['obytes']   = self.get_rel("obytes")

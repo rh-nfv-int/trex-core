@@ -1,6 +1,7 @@
 # from __future__ import division
 import stl_path
 from trex.stl.api import *
+from trex.utils.common import calc_bps_L1
 
 import json
 import argparse
@@ -701,6 +702,28 @@ class NdrBench:
                                      lower_bound_percentage_of_max_rate, 0)
             return self.perf_run_interval(lower_bound_percentage_of_max_rate, 0)
 
+    def _measure_rate(self, begin, end, ports, bytes_key, pkts_key):
+        """
+            Computes the aggregate L2 bps, L1 bps and pps over the given ports
+            from the counter deltas between two stats snapshots, using each
+            port's own server timestamp so the rate is not skewed by client-side
+            timing.
+
+            :returns:
+                Tuple (bps_L2, bps_L1, pps) summed over the ports.
+        """
+        total_L2 = total_L1 = total_pps = 0.0
+        for p in ports:
+            dt = end[p]['ts'] - begin[p]['ts']
+            if dt <= 0:
+                continue
+            pps = (end[p][pkts_key] - begin[p][pkts_key]) / dt
+            bps_L2 = 8.0 * (end[p][bytes_key] - begin[p][bytes_key]) / dt
+            total_L2 += bps_L2
+            total_L1 += calc_bps_L1(bps_L2, pps)
+            total_pps += pps
+        return total_L2, total_L1, total_pps
+
     def perf_run(self, rate_mb_percent, run_max=False):
         """
             Transmits traffic through the STL client object in the class. 
@@ -719,14 +742,15 @@ class NdrBench:
         self.stl_client.clear_stats()
         if run_max:
             duration = self.config.first_run_duration
-            mult = "100%"
             rate_mb_percent = 100
         else:
-            m_rate = Rate(self.results.stats['max_rate_bps'])
             if rate_mb_percent == 0:
                 rate_mb_percent += 1
-            mult = str(m_rate.convert_percent_to_rate(rate_mb_percent)) + "bps"
             duration = self.config.iteration_duration
+        # Drive traffic with TRex's native percentage multiplier: the server
+        # resolves it against the port line rate, so rate_mb_percent is a true
+        # percentage of line rate and does not depend on any measured base.
+        mult = str(rate_mb_percent) + "%"
         # Let the server time the run and notify us over its async event channel
         # when the job is done. The duration counts from the start of the
         # ramp-up, so add the ramp time to hold at the target rate for the full
@@ -735,11 +759,16 @@ class NdrBench:
                               duration=duration + self.config.ramp_up_time,
                               core_mask=self.config.transmit_core_masks,
                               ramp_up_time=self.config.ramp_up_time)
-        # Sample the instantaneous rate/utilization counters while traffic is
-        # still running: they decay to zero once it stops. is_traffic_active
-        # follows the server's job-done event, so the loop ends when the timed
-        # run completes.
-        stats = self.stl_client.get_stats()
+        # Wait for the ramp-up to finish, plus a short settle, so both rate
+        # samples are taken while traffic is holding at the target rate.
+        time.sleep(self.config.ramp_up_time + 0.5)
+        # Measure the achieved rate from the cumulative byte/packet counters over
+        # the stable hold. Both snapshots are taken while traffic is running, and
+        # the server stamps each with its own monotonic clock, so the rate is
+        # exact: free of instantaneous-counter noise, ramp-up/decay artifacts,
+        # and client-side or client/server clock skew.
+        begin = self.stl_client.get_stats()
+        stats = begin
         while self.stl_client.is_traffic_active(ports=self.config.ports):
             stats = self.stl_client.get_stats()
             time.sleep(0.5)
@@ -772,20 +801,23 @@ class NdrBench:
                     continue
                 latency_dict = latency_stats[i]['latency']
                 latency_groups[i] = latency_dict
-        tx_bps = [stats[x]['tx_bps'] for x in self.config.transmit_ports]
-        rx_bps = [stats[x]['rx_bps'] for x in self.config.receive_ports]
-        tx_util_norm = sum([stats[x]['tx_util'] for x in self.config.transmit_ports]) / len(self.config.transmit_ports)
+        # Aggregate the achieved TX/RX rates over all ports from the counter
+        # deltas between the two stable-hold snapshots.
+        tx_L2, tx_L1, tx_pps = self._measure_rate(begin, stats, self.config.transmit_ports, 'obytes', 'opackets')
+        rx_L2, rx_L1, rx_pps = self._measure_rate(begin, stats, self.config.receive_ports, 'ibytes', 'ipackets')
+        tx_speed = sum(self.stl_client.ports[p].get_speed_bps() for p in self.config.transmit_ports)
+        tx_util = (100.0 * tx_L1 / tx_speed) if tx_speed else 0
         self.results.stats['total_iterations'] = self.results.stats['total_iterations'] + 1 if not run_max else self.results.stats['total_iterations']
         run_results = {'queue_full_percentage': q_full_percentage, 'drop_rate_percentage': lost_p_percentage,
                        'valid_latency': self.is_valid_latency(latency_stats),
-                       'rate_tx_bps': min(tx_bps),
-                       'rate_rx_bps': min(rx_bps),
-                       'tx_util': tx_util_norm, 'latency': latency_groups,
-                       'cpu_util': stats['global']['cpu_util'], 'tx_pps': stats['total']['tx_pps'],
-                       'bw_per_core': stats['global']['bw_per_core'], 'rx_pps': stats['total']['rx_pps'],
-                       'rate_p': float(rate_mb_percent), 'total_tx_L1': stats['total']['tx_bps_L1'],
-                       'total_rx_L1': stats['total']['rx_bps_L1'], 'tx_bps': stats['total']['tx_bps'],
-                       'rx_bps': stats['total']['rx_bps'],
+                       'rate_tx_bps': tx_L1,
+                       'rate_rx_bps': rx_L1,
+                       'tx_util': tx_util, 'latency': latency_groups,
+                       'cpu_util': stats['global']['cpu_util'], 'tx_pps': tx_pps,
+                       'bw_per_core': stats['global']['bw_per_core'], 'rx_pps': rx_pps,
+                       'rate_p': float(rate_mb_percent), 'total_tx_L1': tx_L1,
+                       'total_rx_L1': rx_L1, 'tx_bps': tx_L2,
+                       'rx_bps': rx_L2,
                        'total_iterations': self.results.stats['total_iterations']}
         return run_results
 
@@ -799,8 +831,16 @@ class NdrBench:
         if self.config.verbose:
             self.results.print_state("Calculation of max rate for DUT", None, None)
         run_results = self.perf_run(100, True)
-        run_results['max_rate_bps'] = run_results['rate_tx_bps']
-        run_results['max_rate_pps'] = run_results['tx_pps']
+        # The max rate is the physical line rate of the transmit ports (L1),
+        # not the achieved throughput: a DUT that drops at 100% must still be
+        # measured against the line it is offered.
+        max_rate_bps = sum(self.stl_client.ports[p].get_speed_bps() for p in self.config.transmit_ports)
+        run_results['max_rate_bps'] = max_rate_bps
+        # Scale the measured pps up to line rate for the profile's packet size.
+        if run_results['total_tx_L1'] > 0:
+            run_results['max_rate_pps'] = run_results['tx_pps'] * max_rate_bps / run_results['total_tx_L1']
+        else:
+            run_results['max_rate_pps'] = run_results['tx_pps']
         self.results.update(run_results)
         if self.results.stats['drop_rate_percentage'] < 0:
             self.results.stats['drop_rate_percentage'] = 0

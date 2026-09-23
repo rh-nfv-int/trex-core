@@ -2952,6 +2952,7 @@ COLD_FUNC void CGlobalStats::port_stats_to_json(Json::Value &output,
                                                uint8_t port_id) {
   CPerPortStats *lp = &m_port[port_id];
 
+  output["ts"] = now_sec();
   output["opackets"] = lp->opackets;
   output["obytes"] = lp->obytes;
   output["ipackets"] = lp->ipackets;
