@@ -736,6 +736,7 @@ class NdrBench:
         stats = self.stl_client.get_stats()
         opackets = stats['total']['opackets']
         ipackets = stats['total']['ipackets']
+        ipackets += sum(stats[port].get('imissed', 0) for port in self.config.receive_ports)
         lost_p = opackets - ipackets
         lost_p_percentage = (float(lost_p) / float(opackets)) * 100.00
         if lost_p_percentage < 0:

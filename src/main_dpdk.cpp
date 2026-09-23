@@ -1149,6 +1149,7 @@ COLD_FUNC void CPhyEthIFStats::Clear() {
     opackets = 0;
     obytes = 0;
     ierrors = 0;
+    imissed = 0;
     oerrors = 0;
     imcasts = 0;
     rx_nombuf = 0;
@@ -2704,6 +2705,7 @@ public:
     uint64_t ipackets;
     uint64_t ibytes;
     uint64_t ierrors;
+    uint64_t imissed;
     uint64_t oerrors;
     tx_per_flow_t m_tx_per_flow[MAX_FLOW_STATS + MAX_FLOW_STATS_PAYLOAD];
     tx_per_flow_t m_prev_tx_per_flow[MAX_FLOW_STATS + MAX_FLOW_STATS_PAYLOAD];
@@ -2890,6 +2892,7 @@ COLD_FUNC void CGlobalStats::dump_json(std::string & json, bool baseline){
         json+=GET_FIELD_PORT(i,ipackets) ;
         json+=GET_FIELD_PORT(i,ibytes)   ;
         json+=GET_FIELD_PORT(i,ierrors)  ;
+        json+=GET_FIELD_PORT(i,imissed)  ;
         json+=GET_FIELD_PORT(i,oerrors)  ;
         json+=GET_FIELD_PORT(i,m_total_tx_bps);
         json+=GET_FIELD_PORT(i,m_total_tx_pps);
@@ -2954,6 +2957,7 @@ COLD_FUNC void CGlobalStats::port_stats_to_json(Json::Value &output,
   output["ipackets"] = lp->ipackets;
   output["ibytes"] = lp->ibytes;
   output["ierrors"] = lp->ierrors;
+  output["imissed"] = lp->imissed;
   output["oerrors"] = lp->oerrors;
   output["m_total_tx_bps"] = lp->m_total_tx_bps;
   output["m_total_tx_pps"] = lp->m_total_tx_pps;
@@ -4775,6 +4779,7 @@ void CGlobalTRex::get_stats(CGlobalStats & stats){
         stp->ipackets = st.ipackets;
         stp->ibytes   = st.ibytes;
         stp->ierrors  = st.ierrors;
+        stp->imissed  = st.imissed;
         stp->oerrors  = st.oerrors;
         stp->m_total_tx_bps = _if->get_last_tx_rate()*_1Mb_DOUBLE;
         stp->m_total_tx_pps = _if->get_last_tx_pps_rate();

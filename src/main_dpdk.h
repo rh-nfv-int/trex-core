@@ -55,6 +55,7 @@ class CPhyEthIFStats {
     uint64_t opackets;  /**< Total number of successfully transmitted packets.*/
     uint64_t obytes;    /**< Total number of successfully transmitted bytes. */
     uint64_t ierrors;   /**< Total number of erroneous received packets. */
+    uint64_t imissed;   /**< Total number of missed received packets. */
     uint64_t oerrors;   /**< Total number of failed transmitted packets. */
     uint64_t imcasts;   /**< Total number of multicast received packets. */
     uint64_t rx_nombuf; /**< Total number of RX mbuf allocation failures. */

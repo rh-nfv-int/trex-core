@@ -546,6 +546,9 @@ class ASTFNdrBench:
         self.astf_client.stop()
         opackets = stats['total']['opackets']
         ipackets = stats['total']['ipackets']
+        ipackets += sum(stats[port].get('imissed', 0)
+                        for port in range(self.astf_client.get_port_count())
+                        if port in stats and isinstance(stats[port], dict))
         q_full_packets = stats['global']['queue_full']
         q_full_percentage = float((q_full_packets / float(opackets)) * 100.000)
         latency_stats = stats['latency']

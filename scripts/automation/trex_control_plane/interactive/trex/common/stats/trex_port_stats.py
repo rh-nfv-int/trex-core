@@ -78,6 +78,7 @@ class PortStats(AbstractStats):
         stats['ibytes']   = self.get_rel("ibytes")
         stats['oerrors']  = self.get_rel("oerrors")
         stats['ierrors']  = self.get_rel("ierrors")
+        stats['imissed']  = self.get_rel("imissed")
 
         stats['tx_bps']     = self.get("m_total_tx_bps")
         stats['tx_pps']     = self.get("m_total_tx_pps")
@@ -178,6 +179,10 @@ class PortStats(AbstractStats):
                 ("ierrors", format_num(self.get_rel("ierrors"),
                                        compact = False,
                                        opts = 'green' if (self.get_rel("ierrors")== 0) else 'red')),
+
+                ("imissed", format_num(self.get_rel("imissed"),
+                                       compact = False,
+                                       opts = 'green' if (self.get_rel("imissed")== 0) else 'red')),
                 ])
 
 

@@ -235,8 +235,9 @@ bool CTRexExtendedDriverBase::get_extended_stats_fixed(CPhyEthIF * _if, CPhyEthI
     stats->obytes += stats1.obytes - prev_stats->obytes + (stats1.opackets - prev_stats->opackets) * fix_o;
     stats->f_ipackets += 0;
     stats->f_ibytes   += 0;
-    stats->ierrors    += stats1.imissed + stats1.ierrors + stats1.rx_nombuf
-        - prev_stats->imissed - prev_stats->ierrors - prev_stats->rx_nombuf;
+    stats->imissed    += stats1.imissed - prev_stats->imissed;
+    stats->ierrors    += stats1.ierrors + stats1.rx_nombuf
+        - prev_stats->ierrors - prev_stats->rx_nombuf;
     stats->oerrors    += stats1.oerrors - prev_stats->oerrors;
     stats->imcasts    += 0;
     stats->rx_nombuf  += stats1.rx_nombuf - prev_stats->rx_nombuf;

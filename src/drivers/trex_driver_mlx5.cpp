@@ -182,8 +182,8 @@ bool CTRexExtendedDriverBaseMlnx5G::get_extended_stats(CPhyEthIF * _if, CPhyEthI
         stats->ibytes += ibytes - prev_stats->ibytes +
                          packet_diff * 4; // add FCS
 
-        stats->ierrors += imissed - prev_stats->imissed +
-                          rx_nombuf - prev_stats->rx_nombuf +
+        stats->imissed += imissed - prev_stats->imissed;
+        stats->ierrors += rx_nombuf - prev_stats->rx_nombuf +
                           ierrors - prev_stats->ierrors;
         stats->rx_nombuf += rx_nombuf - prev_stats->rx_nombuf;
         stats->oerrors += oerrors - prev_stats->oerrors;
