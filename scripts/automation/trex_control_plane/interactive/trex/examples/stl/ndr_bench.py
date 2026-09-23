@@ -354,10 +354,8 @@ class NdrBenchResults:
         print("RX PPS %s            :%s" % (traffic_dir, self.convert_rate(float(self.stats['rx_pps']), True)))
         print("TX Utilization                    :%0.2f %%" % self.stats['tx_util'])
         print("TRex CPU                          :%0.2f %%" % self.stats['cpu_util'])
-        print("Total TX L1 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['total_tx_L1']))))
-        print("Total RX L1 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['total_rx_L1']))))
-        print("Total TX L2 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['tx_bps']))))
-        print("Total RX L2 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['rx_bps']))))
+        print("Total TX L1 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['rate_tx_bps']))))
+        print("Total RX L1 %s       :%s     " % (traffic_dir, self.convert_rate(float(self.stats['rate_rx_bps']))))
         if 'rate_difference' in self.stats:
             print("Distance from current Optimum     :%0.2f %%" % self.stats['rate_difference'])
 
@@ -373,8 +371,8 @@ class NdrBenchResults:
         if 'iteration' in self.stats:
             print("Iteration                         :{}".format(self.stats['iteration']))
         print("Running Rate                      :%s" % self.convert_rate(float(self.stats['rate_tx_bps'])))
-        print("Running Rate (%% of max)           :%0.2f %%" % self.stats['rate_p'])
-        print("Max Rate                          :%s       " % self.convert_rate(float(self.stats['max_rate_bps'])))
+        print("Running Rate (%% of line rate)     :%0.2f %%" % self.stats['rate_p'])
+        print("Line Rate                         :%s       " % self.convert_rate(float(self.stats['max_rate_bps'])))
         print("Drop Rate                         :%0.5f %% of oPackets" % self.stats['drop_rate_percentage'])
         print("Queue Full                        :%0.2f %% of oPackets" % self.stats['queue_full_percentage'])
         if self.config.latency and self.config.max_latency_set:
@@ -383,41 +381,34 @@ class NdrBenchResults:
 
     def print_final(self):
         """
-            Prints the final data regarding where the NDR is found.
+            Prints the final report. All rates are L1.
         """
-        if self.config.bi_dir:
-            traffic_dir = "bi-directional "
-        else:
-            traffic_dir = "uni-directional"
-        print("\nTitle                             :%s" % self.stats['title'])
-        if 'iteration' in self.stats:
-            print("Total Iterations                  :{}".format(self.stats['total_iterations']))
-        print("Max Rate                          :%s       " % self.convert_rate(float(self.stats['max_rate_bps'])))
-        print("Max Rate [bps]                    :%s" % self.convert_rate(float(self.stats['max_rate_bps'])))
-        if 'max_rate_pps' in self.stats:
-            print("Max Rate [pps]                    :%s" % self.convert_rate(float(self.stats['max_rate_pps']), True))
-        print("Optimal P-Drop Rate               :%s" % self.convert_rate(float(self.stats['rate_tx_bps'])))
-        print("P-Drop Rate (%% of max)            :%0.2f %%" % self.stats['rate_p'])
-        print("Drop Rate at Optimal P-Drop Rate  :%0.5f %% of oPackets" % self.stats['drop_rate_percentage'])
-        print("Queue Full at Optimal P-Drop Rate :%0.2f %% of oPackets" % self.stats['queue_full_percentage'])
-        if 'interval_low_percentage' in self.stats:
-            print("Final Interval (%% of max)         :[%0.2f %%, %0.2f %%]" %
-                  (self.stats['interval_low_percentage'], self.stats['interval_high_percentage']))
-            print("Final Interval (absolute)         :[%s, %s]" %
-                  (self.convert_rate(float(self.stats['interval_low_bps'])),
-                   self.convert_rate(float(self.stats['interval_high_bps']))))
-        if self.stats.get('ndr_precision_percentage') is not None:
-            width_bps = float(self.stats['interval_high_bps']) - float(self.stats['interval_low_bps'])
-            width_pps = ((self.stats['interval_high_percentage'] - self.stats['interval_low_percentage']) / 100.00) \
-                        * float(self.stats.get('max_rate_pps', 0))
-            print("NDR Precision (relative)          :+%0.2f %% (+%s, +%s)" %
-                  (self.stats['ndr_precision_percentage'], self.convert_rate(width_bps),
-                   self.convert_rate(width_pps, True)))
-        if self.config.latency and self.config.max_latency_set:
-            print("Valid Latency at Opt. P-Drop Rate :%s" % self.stats['valid_latency'])
-        self.print_run_stats()
-        for x in self.stats['ndr_points']:
-            print("NDR(s) %s            :%s " % (traffic_dir, self.convert_rate(x)))
+        traffic_dir = "bi-directional " if self.config.bi_dir else "uni-directional"
+        s = self.stats
+        print("\nTitle                             :%s" % s['title'])
+        print("Iterations                        :%d" % s['iterations'])
+        print("Line Rate %s        :%s / %s" %
+              (traffic_dir, self.convert_rate(float(s['line_rate_bps'])),
+               self.convert_rate(float(s['line_rate_pps']), True)))
+        print("Throughput %s       :%s / %s" %
+              (traffic_dir, self.convert_rate(float(s['throughput_bps'])),
+               self.convert_rate(float(s['throughput_pps']), True)))
+        print("NDR %s              :%s / %s" %
+              (traffic_dir, self.convert_rate(float(s['ndr_bps'])),
+               self.convert_rate(float(s['ndr_pps']), True)))
+        print("NDR Precision %s    :%s / %s" %
+              (traffic_dir, self.convert_rate(float(s['precision_bps'])),
+               self.convert_rate(float(s['precision_pps']), True)))
+        for p in sorted(s.get('ndr_bps_per_port', {})):
+            print("  port %s NDR                     :%s / %s" %
+                  (p, self.convert_rate(float(s['ndr_bps_per_port'][p])),
+                   self.convert_rate(float(s['ndr_pps_per_port'][p]), True)))
+        for p in sorted(s.get('throughput_bps_per_port', {})):
+            print("  port %s Throughput              :%s / %s" %
+                  (p, self.convert_rate(float(s['throughput_bps_per_port'][p])),
+                   self.convert_rate(float(s['throughput_pps_per_port'][p]), True)))
+        if s.get('latency'):
+            self.print_latency()
 
     def to_json(self):
         """
@@ -434,40 +425,26 @@ class NdrBenchResults:
 
     def human_readable_dict(self):
         """
-            Return a human readable dictionary of the results.
+            Return a human readable dictionary of the final report. All rates
+            are L1.
         """
-        hu_dict = {'Queue Full [%]': str(round(self.stats['queue_full_percentage'], 2)) + "%",
-                   'BW per core [Gbit/sec @100% per core]': str(
-                       round(float(self.stats['bw_per_core']), 2)) + 'Gbit/Sec @100% per core',
-                   'RX [MPPS]': self.convert_rate(float(self.stats['rx_pps']), True),
-                   'TX [MPPS]': self.convert_rate(float(self.stats['tx_pps']), True),
-                   'Line Utilization [%]': str(round(self.stats['tx_util'], 2)),
-                   'CPU Utilization [%]': str(round(self.stats['cpu_util'],2)),
-                   'Total TX L1': self.convert_rate(float(self.stats['total_tx_L1'])),
-                   'Total RX L1': self.convert_rate(float(self.stats['total_rx_L1'])),
-                   'TX [bps]': self.convert_rate(float(self.stats['tx_bps'])),
-                   'RX [bps]': self.convert_rate(float(self.stats['rx_bps'])),
-                   'OPT TX Rate [bps]': self.convert_rate(float(self.stats['rate_tx_bps'])),
-                   'OPT RX Rate [bps]': self.convert_rate(float(self.stats['rate_rx_bps'])),
-                   'OPT Rate (Multiplier) [%]': str(self.stats['rate_p']),
-                   'Max Rate [bps]': self.convert_rate(float(self.stats['max_rate_bps'])),
-                   'Max Rate [pps]': self.convert_rate(float(self.stats['max_rate_pps']), True) if 'max_rate_pps' in self.stats else None,
-                   'Drop Rate [%]': str(round(self.stats['drop_rate_percentage'], 2)),
-                   'Elapsed Time [Sec]': str(round(self.stats['Elapsed Time'], 2)),
-                   'NDR points': [self.convert_rate(float(x)) for x in self.stats['ndr_points']],
-                   'Final Interval [%]': "[" + str(round(self.stats['interval_low_percentage'], 2)) + "%, " +
-                                         str(round(self.stats['interval_high_percentage'], 2)) + "%]"
-                                         if 'interval_low_percentage' in self.stats else None,
-                   'Final Interval [bps]': "[" + self.convert_rate(float(self.stats['interval_low_bps'])) + ", " +
-                                           self.convert_rate(float(self.stats['interval_high_bps'])) + "]"
-                                           if 'interval_low_bps' in self.stats else None,
-                   'NDR Precision (relative) [%]': "+" + str(round(self.stats['ndr_precision_percentage'], 2)) + "%"
-                                                   if self.stats.get('ndr_precision_percentage') is not None else None,
-                   'Total Iterations': self.stats.get('iteration', None),
-                   'Title': self.stats['title'],
-                   'latency': dict(self.stats['latency']),
-                   'valid_latency': self.stats['valid_latency']}
-
+        s = self.stats
+        hu_dict = {'Title': s['title'],
+                   'Iterations': s['iterations'],
+                   'Line Rate [bps]': self.convert_rate(float(s['line_rate_bps'])),
+                   'Line Rate [pps]': self.convert_rate(float(s['line_rate_pps']), True),
+                   'Throughput [bps]': self.convert_rate(float(s['throughput_bps'])),
+                   'Throughput [pps]': self.convert_rate(float(s['throughput_pps']), True),
+                   'NDR [bps]': self.convert_rate(float(s['ndr_bps'])),
+                   'NDR [pps]': self.convert_rate(float(s['ndr_pps']), True),
+                   'NDR Precision [bps]': self.convert_rate(float(s['precision_bps'])),
+                   'NDR Precision [pps]': self.convert_rate(float(s['precision_pps']), True),
+                   'NDR per port [bps]': {p: self.convert_rate(float(v)) for p, v in s.get('ndr_bps_per_port', {}).items()},
+                   'NDR per port [pps]': {p: self.convert_rate(float(v), True) for p, v in s.get('ndr_pps_per_port', {}).items()},
+                   'Throughput per port [bps]': {p: self.convert_rate(float(v)) for p, v in s.get('throughput_bps_per_port', {}).items()},
+                   'Throughput per port [pps]': {p: self.convert_rate(float(v), True) for p, v in s.get('throughput_pps_per_port', {}).items()}}
+        if s.get('latency'):
+            hu_dict['latency'] = dict(s['latency'])
         return hu_dict
 
 
@@ -577,16 +554,39 @@ class NdrBench:
             return True
 
 
-    def calculate_ndr_points(self):
+    def finalize(self):
         """
-            Calculates NDR points based on the ndr_results parameter in the :class:`.NdrBenchConfig` object.
+            Reduce the working stats to the final report. Everything is L1:
+            the port line rate, the throughput the DUT forwards at 100% line
+            rate (drops included), the NDR of the best iteration (no drops),
+            and the width of the final NDR search window.
         """
-        ndr_res = [self.results.stats['tx_bps']]
-        if self.config.ndr_results > 1:
-            ndr_range = range(1, self.config.ndr_results + 1, 1)
-            ndr_range.reverse()
-            ndr_res = [float((self.results.stats['tx_bps'])) / float(t) for t in ndr_range]
-        self.results.update({'ndr_points': ndr_res})
+        s = self.results.stats
+        line_rate_bps = s.get('max_rate_bps', 0)
+        line_rate_pps = s.get('max_rate_pps', 0)
+        low_bps = s.get('interval_low_bps', line_rate_bps)
+        high_bps = s.get('interval_high_bps', line_rate_bps)
+        low_p = s.get('interval_low_percentage', 100.0)
+        high_p = s.get('interval_high_percentage', 100.0)
+        report = {
+            'title': s.get('title'),
+            'iterations': s.get('total_iterations', 0),
+            'line_rate_bps': line_rate_bps,
+            'line_rate_pps': line_rate_pps,
+            'throughput_bps': s.get('throughput_bps', 0),
+            'throughput_pps': s.get('throughput_pps', 0),
+            'throughput_bps_per_port': s.get('throughput_bps_per_port', {}),
+            'throughput_pps_per_port': s.get('throughput_pps_per_port', {}),
+            'ndr_bps': s.get('rate_rx_bps', 0),
+            'ndr_pps': s.get('rx_pps', 0),
+            'ndr_bps_per_port': s.get('rx_bps_per_port', {}),
+            'ndr_pps_per_port': s.get('rx_pps_per_port', {}),
+            'precision_bps': high_bps - low_bps,
+            'precision_pps': (high_p - low_p) / 100.0 * line_rate_pps,
+        }
+        if s.get('latency'):
+            report['latency'] = s['latency']
+        self.results.stats = report
 
     def update_opt_stats(self, new_stats):
         """
@@ -704,25 +704,30 @@ class NdrBench:
 
     def _measure_rate(self, begin, end, ports, bytes_key, pkts_key):
         """
-            Computes the aggregate L2 bps, L1 bps and pps over the given ports
-            from the counter deltas between two stats snapshots, using each
-            port's own server timestamp so the rate is not skewed by client-side
-            timing.
+            Computes the L1 bps and pps for each of the given ports from the
+            counter deltas between two stats snapshots, using each port's own
+            server timestamp so the rate is not skewed by client-side timing.
 
             :returns:
-                Tuple (bps_L2, bps_L1, pps) summed over the ports.
+                Tuple (bps_L1, pps, bps_L1_per_port, pps_per_port) where the two
+                scalars are the sums over the ports and the two dicts map each
+                port id to its own rate.
         """
-        total_L2 = total_L1 = total_pps = 0.0
+        total_bps = total_pps = 0.0
+        bps_per_port = {}
+        pps_per_port = {}
         for p in ports:
             dt = end[p]['ts'] - begin[p]['ts']
             if dt <= 0:
+                bps_per_port[p] = pps_per_port[p] = 0.0
                 continue
             pps = (end[p][pkts_key] - begin[p][pkts_key]) / dt
-            bps_L2 = 8.0 * (end[p][bytes_key] - begin[p][bytes_key]) / dt
-            total_L2 += bps_L2
-            total_L1 += calc_bps_L1(bps_L2, pps)
+            bps = calc_bps_L1(8.0 * (end[p][bytes_key] - begin[p][bytes_key]) / dt, pps)
+            bps_per_port[p] = bps
+            pps_per_port[p] = pps
+            total_bps += bps
             total_pps += pps
-        return total_L2, total_L1, total_pps
+        return total_bps, total_pps, bps_per_port, pps_per_port
 
     def perf_run(self, rate_mb_percent, run_max=False):
         """
@@ -801,23 +806,23 @@ class NdrBench:
                     continue
                 latency_dict = latency_stats[i]['latency']
                 latency_groups[i] = latency_dict
-        # Aggregate the achieved TX/RX rates over all ports from the counter
+        # Aggregate the achieved TX/RX L1 rates over all ports from the counter
         # deltas between the two stable-hold snapshots.
-        tx_L2, tx_L1, tx_pps = self._measure_rate(begin, stats, self.config.transmit_ports, 'obytes', 'opackets')
-        rx_L2, rx_L1, rx_pps = self._measure_rate(begin, stats, self.config.receive_ports, 'ibytes', 'ipackets')
+        tx_bps, tx_pps, tx_bps_pp, tx_pps_pp = self._measure_rate(begin, stats, self.config.transmit_ports, 'obytes', 'opackets')
+        rx_bps, rx_pps, rx_bps_pp, rx_pps_pp = self._measure_rate(begin, stats, self.config.receive_ports, 'ibytes', 'ipackets')
         tx_speed = sum(self.stl_client.ports[p].get_speed_bps() for p in self.config.transmit_ports)
-        tx_util = (100.0 * tx_L1 / tx_speed) if tx_speed else 0
+        tx_util = (100.0 * tx_bps / tx_speed) if tx_speed else 0
         self.results.stats['total_iterations'] = self.results.stats['total_iterations'] + 1 if not run_max else self.results.stats['total_iterations']
         run_results = {'queue_full_percentage': q_full_percentage, 'drop_rate_percentage': lost_p_percentage,
                        'valid_latency': self.is_valid_latency(latency_stats),
-                       'rate_tx_bps': tx_L1,
-                       'rate_rx_bps': rx_L1,
+                       'rate_tx_bps': tx_bps, 'rate_rx_bps': rx_bps,
+                       'tx_pps': tx_pps, 'rx_pps': rx_pps,
+                       'tx_bps_per_port': tx_bps_pp, 'tx_pps_per_port': tx_pps_pp,
+                       'rx_bps_per_port': rx_bps_pp, 'rx_pps_per_port': rx_pps_pp,
                        'tx_util': tx_util, 'latency': latency_groups,
-                       'cpu_util': stats['global']['cpu_util'], 'tx_pps': tx_pps,
-                       'bw_per_core': stats['global']['bw_per_core'], 'rx_pps': rx_pps,
-                       'rate_p': float(rate_mb_percent), 'total_tx_L1': tx_L1,
-                       'total_rx_L1': rx_L1, 'tx_bps': tx_L2,
-                       'rx_bps': rx_L2,
+                       'cpu_util': stats['global']['cpu_util'],
+                       'bw_per_core': stats['global']['bw_per_core'],
+                       'rate_p': float(rate_mb_percent),
                        'total_iterations': self.results.stats['total_iterations']}
         return run_results
 
@@ -836,11 +841,19 @@ class NdrBench:
         # measured against the line it is offered.
         max_rate_bps = sum(self.stl_client.ports[p].get_speed_bps() for p in self.config.transmit_ports)
         run_results['max_rate_bps'] = max_rate_bps
-        # Scale the measured pps up to line rate for the profile's packet size.
-        if run_results['total_tx_L1'] > 0:
-            run_results['max_rate_pps'] = run_results['tx_pps'] * max_rate_bps / run_results['total_tx_L1']
+        # Line rate in pps for the profile's packet size, scaled from the
+        # measured max run (there is no fixed value for mixed-size profiles).
+        if run_results['rate_tx_bps'] > 0:
+            run_results['max_rate_pps'] = run_results['tx_pps'] * max_rate_bps / run_results['rate_tx_bps']
         else:
             run_results['max_rate_pps'] = run_results['tx_pps']
+        # Throughput is what the DUT actually forwards (RX) when offered 100%
+        # line rate, drops included. Capture it now, before the search overwrites
+        # the per-run rates with lower-rate iterations.
+        run_results['throughput_bps'] = run_results['rate_rx_bps']
+        run_results['throughput_pps'] = run_results['rx_pps']
+        run_results['throughput_bps_per_port'] = run_results['rx_bps_per_port']
+        run_results['throughput_pps_per_port'] = run_results['rx_pps_per_port']
         self.results.update(run_results)
         if self.results.stats['drop_rate_percentage'] < 0:
             self.results.stats['drop_rate_percentage'] = 0
@@ -931,7 +944,6 @@ class NdrBench:
         high_bps = max_rate.convert_percent_to_rate(high_bound)
         self.opt_run_stats['interval_low_bps'] = low_bps
         self.opt_run_stats['interval_high_bps'] = high_bps
-        self.opt_run_stats['ndr_precision_percentage'] = ((high_bps - low_bps) / low_bps * 100.00) if low_bps > 0 else None
         return self.opt_run_stats
 
     def find_ndr(self):
@@ -953,7 +965,7 @@ class NdrBench:
         if plugin_stop:
             if self.config.verbose:
                 self.results.print_state("Plugin decided to stop after trying to find the max rate!", None, None)
-            self.calculate_ndr_points()
+            self.finalize()
             return
 
         drop_percent = self.results.stats['drop_rate_percentage']
@@ -995,10 +1007,9 @@ class NdrBench:
                 self.results.print_state("NDR found at max rate", None, None)
             max_rate_bps = self.results.stats['max_rate_bps']
             self.results.update({'interval_low_percentage': 100.0, 'interval_high_percentage': 100.0,
-                                 'interval_low_bps': max_rate_bps, 'interval_high_bps': max_rate_bps,
-                                 'ndr_precision_percentage': 0.0})
+                                 'interval_low_bps': max_rate_bps, 'interval_high_bps': max_rate_bps})
 
-        self.calculate_ndr_points()
+        self.finalize()
 
 
 if __name__ == '__main__':
