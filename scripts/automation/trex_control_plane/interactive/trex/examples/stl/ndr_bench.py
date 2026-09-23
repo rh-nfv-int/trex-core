@@ -81,7 +81,7 @@ class NdrBenchConfig:
                  max_latency=0, lat_tolerance=0, verbose=False, bi_dir=False,
                  plugin_file=None, tunables={}, opt_binary_search=False,
                  opt_binary_search_percentage=5, total_cores=1,
-                 ramp_up_time=None, **kwargs):
+                 ramp_up_time=None, rx_delay_ms=500, **kwargs):
         """
             Configuration parameters for the benchmark.
 
@@ -179,6 +179,10 @@ class NdrBenchConfig:
             self.ramp_up_time = ramp_up_time
         else:
             self.ramp_up_time = 0
+        # Time to let in-flight packets drain after stopping traffic before the
+        # final counters are read, so packets still on the wire are not
+        # miscounted as drops.
+        self.rx_delay_ms = rx_delay_ms
 
     def get_optimal_core_mask(self, num_of_cores, num_of_ports):
         """
@@ -254,7 +258,8 @@ class NdrBenchConfig:
                        'ports': self.ports, 'cores': self.cores, 'total_cores': self.total_cores, 'verbose': self.verbose,
                        'bi_dir' : self.bi_dir, 'plugin_file': self.plugin_file, 'tunables': self.tunables,
                        'opt_binary_search': self.opt_binary_search, 'title': self.title,
-                       'opt_binary_search_percentage': self.opt_binary_search_percentage}
+                       'opt_binary_search_percentage': self.opt_binary_search_percentage,
+                       'rx_delay_ms': self.rx_delay_ms}
         return config_dict
 
 
@@ -712,8 +717,6 @@ class NdrBench:
                 Dictionary with the results of the run.
         """
         self.stl_client.stop(ports=self.config.ports)
-         # allow time for counters to settle from previous runs
-        time.sleep(15)
         self.stl_client.clear_stats()
         duration = 0
         if run_max:
@@ -732,18 +735,28 @@ class NdrBench:
                                   duration=duration, core_mask=self.config.transmit_core_masks,
                                   ramp_up_time=self.config.ramp_up_time)
         time.sleep(duration / 2)
-        self.stl_client.stop(ports=self.config.ports)
+        # Read rate/utilization counters while traffic is still running: they are
+        # instantaneous and decay to zero once traffic is stopped.
         stats = self.stl_client.get_stats()
-        opackets = stats['total']['opackets']
-        ipackets = stats['total']['ipackets']
-        ipackets += sum(stats[port].get('imissed', 0) for port in self.config.receive_ports)
+        self.stl_client.stop(ports=self.config.ports)
+        # Let in-flight packets drain before reading the final packet counts, so
+        # packets still on the wire are not miscounted as drops.
+        if self.config.rx_delay_ms:
+            time.sleep(self.config.rx_delay_ms / 1000.00)
+        final = self.stl_client.get_stats()
+        opackets = final['total']['opackets']
+        ipackets = final['total']['ipackets']
+        # Packets the DUT forwarded but TRex's RX path could not drain (RX ring
+        # full) are counted in imissed, not received in software. Add them back
+        # so generator-side RX drops are not attributed to the DUT.
+        ipackets += sum(final[port].get('imissed', 0) for port in self.config.receive_ports)
         lost_p = opackets - ipackets
         lost_p_percentage = (float(lost_p) / float(opackets)) * 100.00
         if lost_p_percentage < 0:
             lost_p_percentage = 0
-        q_full_packets = stats['global']['queue_full']
+        q_full_packets = final['global']['queue_full']
         q_full_percentage = float((q_full_packets / float(opackets)) * 100.000)
-        latency_stats = stats['latency']
+        latency_stats = final['latency']
         if run_max and latency_stats:
             # first run & latency -> update that we have latency traffic
             self.config.latency = True
